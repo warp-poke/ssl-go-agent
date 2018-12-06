@@ -1,30 +1,37 @@
 package cmd
 
 import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/warp-poke/ssl-go-agent/core"
+	"github.com/warp-poke/ssl-go-agent/models"
 )
-
-var cfgFile string
-var verbose bool
 
 func init() {
 	cobra.OnInitialize(initConfig)
-	RootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file to use")
-	RootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+
+	RootCmd.PersistentFlags().StringP("config", "", "", "config file to use")
+	RootCmd.PersistentFlags().BoolP("verbose", "v", false, "verbose output")
 
 	viper.BindPFlags(RootCmd.Flags())
 }
 
 func initConfig() {
-	if verbose {
+	if viper.GetBool("verbose") {
 		log.SetLevel(log.DebugLevel)
 	}
 
 	// Bind environment variables
 	viper.SetEnvPrefix("poke_ssl_agent")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("_", "."))
 	viper.AutomaticEnv()
 
 	// Set config search path
@@ -43,6 +50,7 @@ func initConfig() {
 	}
 
 	// Load user defined config
+	cfgFile := viper.GetString("config")
 	if cfgFile != "" {
 		viper.SetConfigFile(cfgFile)
 		err := viper.ReadInConfig()
@@ -59,26 +67,46 @@ var RootCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Info("poke-ssl-agent starting")
 
-		schedulerEvents := core.NewConsumer()
+		quit := make(chan os.Signal, 2)
+		signal.Notify(quit, syscall.SIGTERM)
+		signal.Notify(quit, syscall.SIGINT)
 
-		//quit := make(chan os.Signal)
-		//signal.Notify(quit, os.Interrupt)
+		consumer, err := core.NewConsumer()
+		if err != nil {
+			log.WithError(err).Fatal("Could not start the kafka consumer")
+		}
 
 		for {
 			select {
-			case se := <-schedulerEvents:
-				log.WithFields(log.Fields{
-					"event": se,
-				}).Info("process new scheduler event")
-				if err := core.Process(se); err != nil {
-					log.WithError(err).Error("Failed to process scheduler event")
+			case m, ok := <-consumer.Messages():
+				if !ok {
+					log.Fatal("Kafka stream was closed")
+				}
+
+				var ev models.SchedulerEvent
+				if err := json.Unmarshal(m.Value, &ev); err != nil {
+					log.WithError(err).Error("Cannot unmarshal scheduler event")
 					continue
 				}
-				// commit offset
 
-				//case sig := <-quit:
-				//	log.Errorf("Got %s signal. Aborting...\n", sig)
-				//	os.Exit(1)
+				go func() {
+					log.WithField("event", ev).Info("process new scheduler event")
+					if err := core.Process(&ev); err != nil {
+						log.WithError(err).Error("Failed to process scheduler event")
+						return
+					}
+
+					consumer.MarkOffset(m, "")
+				}()
+
+			case err := <-consumer.Errors():
+				log.WithError(err).Error("Kafka consumer error")
+
+			case notif := <-consumer.Notifications():
+				log.Info(fmt.Sprintf("%+v", notif))
+			case <-quit:
+				log.Info("ssl-go-agent halted!")
+				return
 			}
 		}
 	},
