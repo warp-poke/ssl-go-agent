@@ -32,12 +32,12 @@ dist: warp-poke.go $$(call rwildcard, ./cmd, *.go) $$(call rwildcard, ./core, *.
 .PHONY: lint
 lint:
 	@command -v gometalinter >/dev/null 2>&1 || { echo >&2 "gometalinter is required but not available please follow instructions from https://github.com/alecthomas/gometalinter"; exit 1; }
-	gometalinter --deadline=180s --disable-all --enable=gofmt ./cmd/... ./core/... ./models/... ./
-	gometalinter --deadline=180s --disable-all --enable=vet ./cmd/... ./core/... ./models/... ./
-	gometalinter --deadline=180s --disable-all --enable=golint ./cmd/... ./core/... ./models/... ./
-	gometalinter --deadline=180s --disable-all --enable=ineffassign ./cmd/... ./core/... ./models/... ./
-	gometalinter --deadline=180s --disable-all --enable=misspell ./cmd/... ./core/... ./models/... ./
-	gometalinter --deadline=180s --disable-all --enable=staticcheck ./cmd/... ./core/... ./models/... ./
+	gometalinter --deadline=180s --disable-all --enable=gofmt ./cmd/... ./models/... ./
+	gometalinter --deadline=180s --disable-all --enable=vet ./cmd/... ./models/... ./
+	gometalinter --deadline=180s --disable-all --enable=golint ./cmd/... ./models/... ./
+	gometalinter --deadline=180s --disable-all --enable=ineffassign ./cmd/... ./models/... ./
+	gometalinter --deadline=180s --disable-all --enable=misspell ./cmd/... ./models/... ./
+	gometalinter --deadline=180s --disable-all --enable=staticcheck ./cmd/... ./models/... ./
 
 .PHONY: format
 format:

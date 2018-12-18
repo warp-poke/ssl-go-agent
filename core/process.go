@@ -11,13 +11,12 @@ import (
 
 // Process perform SSL test and return metrics
 func Process(e *models.SchedulerEvent) error {
-
 	domainInfos, err := GetSSLInfos(e.Domain)
 	if err != nil {
 		return err
 	}
-	testDate := time.Now().Unix() * 1000 * 1000
 
+	testDate := time.Now().Unix() * 1000 * 1000
 	client := warp.NewClient(e.Warp10Endpoint)
 	client.WriteToken = e.Token
 
@@ -26,6 +25,7 @@ func Process(e *models.SchedulerEvent) error {
 		"host":   viper.GetString("host"),
 		"zone":   viper.GetString("zone"),
 	})
+
 	grade.Values = [][]interface{}{{testDate, domainInfos.Grade}}
 	log.WithFields(log.Fields{
 		"metric": grade.Sensision(),
@@ -36,6 +36,7 @@ func Process(e *models.SchedulerEvent) error {
 		"host":   viper.GetString("host"),
 		"zone":   viper.GetString("zone"),
 	})
+
 	expiration.Values = [][]interface{}{{testDate, domainInfos.ExpirationDate.Unix() * 1000 * 1000}}
 	log.WithFields(log.Fields{
 		"metric": expiration.Sensision(),

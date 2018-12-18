@@ -1,0 +1,13 @@
+---
+host: ''
+
+kafka:
+  user: ''
+  password: ''
+  brokers:
+    - x.x.x.x
+  topics:
+    - ''
+
+warp10:
+  endpoint: https://poke.io
