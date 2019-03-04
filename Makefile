@@ -22,11 +22,11 @@ build: poke-ssl-agent.go $$(call rwildcard, ./cmd, *.go) $$(call rwildcard, ./co
 	$(CC) $(DFLAGS) -ldflags "$(CFLAGS)" -o $(BUILD_DIR)/poke-ssl-agent poke-ssl-agent.go
 
 .PHONY: release
-release: warp-poke.go $$(call rwildcard, ./cmd, *.go) $$(call rwildcard, ./core, *.go)
+release: poke-ssl-agent.go $$(call rwildcard, ./cmd, *.go) $$(call rwildcard, ./core, *.go)
 	$(CC) -ldflags "$(CFLAGS)" -o $(BUILD_DIR)/poke-ssl-agent poke-ssl-agent.go
 
 .PHONY: dist
-dist: warp-poke.go $$(call rwildcard, ./cmd, *.go) $$(call rwildcard, ./core, *.go)
+dist: poke-ssl-agent.go $$(call rwildcard, ./cmd, *.go) $$(call rwildcard, ./core, *.go)
 	$(CROSS) $(CC) -ldflags "$(CFLAGS) -s -w" -o $(BUILD_DIR)/poke-ssl-agent poke-ssl-agent.go
 
 .PHONY: lint

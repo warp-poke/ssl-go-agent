@@ -3,11 +3,14 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -16,6 +19,10 @@ import (
 )
 
 func init() {
+	prometheus.MustRegister(eventsCounter)
+	prometheus.MustRegister(eventsSchedulerErrorCounter)
+	prometheus.MustRegister(eventsErrorCounter)
+	prometheus.MustRegister(eventsKafkaConsumerErrorCounter)
 	cobra.OnInitialize(initConfig)
 
 	RootCmd.PersistentFlags().StringP("config", "", "", "config file to use")
@@ -60,12 +67,49 @@ func initConfig() {
 	}
 }
 
+var (
+	eventsCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "ssl",
+		Subsystem: "agent",
+		Name:      "events",
+		Help:      "Number of events handled",
+	})
+
+	eventsErrorCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "ssl",
+		Subsystem: "agent",
+		Name:      "error_events",
+		Help:      "Number of events in error",
+	})
+
+	eventsKafkaConsumerErrorCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "ssl",
+		Subsystem: "agent",
+		Name:      "kafka_error_events",
+		Help:      "Number of events causing kafka consumer error",
+	})
+
+	eventsSchedulerErrorCounter = prometheus.NewCounter(prometheus.CounterOpts{
+		Namespace: "ssl",
+		Subsystem: "agent",
+		Name:      "scheduler_error_events",
+		Help:      "Number of events causing scheduler error",
+	})
+)
+
 // RootCmd launch the aggregator agent.
 var RootCmd = &cobra.Command{
 	Use:   "poke-ssl-agent",
 	Short: "poke-ssl-agent collect SSL domains stats",
 	Run: func(cmd *cobra.Command, args []string) {
 		log.Info("poke-ssl-agent starting")
+
+		http.Handle("/metrics", promhttp.Handler())
+		err := http.ListenAndServe(":2112", nil)
+
+		if err != nil {
+			log.WithError(err).Fatal("Fail to open prometheus Handler")
+		}
 
 		quit := make(chan os.Signal, 2)
 		signal.Notify(quit, syscall.SIGTERM)
@@ -85,6 +129,7 @@ var RootCmd = &cobra.Command{
 
 				var ev models.SchedulerEvent
 				if err := json.Unmarshal(m.Value, &ev); err != nil {
+					eventsErrorCounter.Inc()
 					log.WithError(err).Error("Cannot unmarshal scheduler event")
 					continue
 				}
@@ -92,6 +137,7 @@ var RootCmd = &cobra.Command{
 				go func() {
 					log.WithField("event", ev).Info("process new scheduler event")
 					if err := core.Process(&ev); err != nil {
+						eventsSchedulerErrorCounter.Inc()
 						log.WithError(err).Error("Failed to process scheduler event")
 						return
 					}
@@ -100,9 +146,11 @@ var RootCmd = &cobra.Command{
 				}()
 
 			case err := <-consumer.Errors():
+				eventsKafkaConsumerErrorCounter.Inc()
 				log.WithError(err).Error("Kafka consumer error")
 
 			case notif := <-consumer.Notifications():
+				eventsCounter.Inc()
 				log.Info(fmt.Sprintf("%+v", notif))
 			case <-quit:
 				log.Info("ssl-go-agent halted!")
